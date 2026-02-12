@@ -1,6 +1,6 @@
 [submodule "graphnn"]
 	path = graphnn
-	url = git@github.com:Hanjun-Dai/graphnn
+	url = https://github.com/Hanjun-Dai/graphnn.git
 [submodule "third_party/RTDL_cpp"]
 	path = third_party/RTDL_cpp
 	url = https://github.com/Verdangeta/RTDL_cpp.git
