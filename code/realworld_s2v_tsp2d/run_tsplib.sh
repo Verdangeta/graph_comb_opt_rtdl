@@ -52,7 +52,7 @@ then
     mkdir -p $save_dir
 fi
 
-python main.py \
+python3 main.py \
     -net_type $net_type \
     -n_step $n_step \
     -dev_id $dev_id \

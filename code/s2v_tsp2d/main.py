@@ -1,7 +1,5 @@
 import numpy as np
 import networkx as nx
-import cPickle as cp
-import random
 import ctypes
 import os
 import sys
@@ -61,9 +59,9 @@ def PrepareGraphs(isValid):
             with open(fname, 'r') as f_tsp:
                 for l in f_tsp:
                     if 'DIMENSION' in l:
-                        n_nodes = int(l.split(' ')[-1].strip())
+                        n_nodes = int(l.strip().split(' ')[-1].strip())
                     if in_sec:
-                        idx, x, y = [int(w.strip()) for w in l.split(' ')]
+                        idx, x, y = [int(w.strip()) for w in l.strip().split()]
                         coors[idx - 1] = [float(x) / 1000000.0, float(y) / 1000000.0]
                         assert len(coors) == idx
                     elif 'NODE_COORD_SECTION' in l:
@@ -71,7 +69,7 @@ def PrepareGraphs(isValid):
             assert len(coors) == n_nodes
             g = nx.Graph()
             g.add_nodes_from(range(n_nodes))
-            nx.set_node_attributes(g, 'pos', coors)
+            nx.set_node_attributes(g, coors, 'pos')
             api.InsertGraph(g, is_test=isValid)
 
 if __name__ == '__main__':
@@ -83,7 +81,7 @@ if __name__ == '__main__':
 
     model_file = find_model_file(opt)
     if model_file is not None:
-        print 'loading', model_file
+        print('loading', model_file)
         sys.stdout.flush()
         api.LoadModel(model_file)
 
@@ -111,7 +109,7 @@ if __name__ == '__main__':
             frac = 0.0
             for idx in range(n_valid):
                 frac += api.lib.Test(idx)
-            print 'iter', iter, 'lr', lr, 'eps', eps, 'average tour length: ', frac / n_valid
+            print('iter', iter, 'lr', lr, 'eps', eps, 'average tour length: ', frac / n_valid)
             sys.stdout.flush()
             model_path = '%s/nrange_%d_%d_iter_%d.model' % (opt['save_dir'], int(opt['min_n']), int(opt['max_n']), iter)
             api.SaveModel(model_path)
