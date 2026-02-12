@@ -2,8 +2,94 @@
 #include "i_env.h"
 #include "config.h"
 #include <cassert>
+#include <algorithm>
+#include <limits>
+#include <map>
+#include "rtdlite.h"
 
 #define max(x, y) (x > y ? x : y)
+
+namespace {
+std::pair<int, int> CanonicalEdge(int u, int v)
+{
+    if (u > v)
+        std::swap(u, v);
+    return std::make_pair(u, v);
+}
+
+std::vector<double> BuildRtdlRewards(IEnv* env)
+{
+    std::vector<double> step_rewards(env->act_seq.size(), 0.0);
+    if (!env || !env->graph)
+        return step_rewards;
+
+    const int n = env->graph->num_nodes;
+    if (n <= 1 || (int)env->action_list.size() != n || env->act_seq.empty())
+        return step_rewards;
+
+    const rtd_value_t inf = std::numeric_limits<rtd_value_t>::infinity();
+    std::vector<rtd_value_t> r1((size_t)n * n);
+    std::vector<rtd_value_t> r2((size_t)n * n, inf);
+    std::vector<int> predecessor(n, -1);
+    std::map< std::pair<int, int>, Dtype > tour_edge_len;
+    std::map< std::pair<int, int>, Dtype > mst_edge_len;
+
+    for (int i = 0; i < n; ++i)
+    {
+        r2[(size_t)i * n + i] = 0.0;
+        for (int j = 0; j < n; ++j)
+            r1[(size_t)i * n + j] = env->graph->dist[i][j];
+    }
+
+    for (int i = 0; i < n; ++i)
+    {
+        int u = env->action_list[i];
+        int v = env->action_list[(i + 1) % n];
+        auto e = CanonicalEdge(u, v);
+        auto w = env->graph->dist[u][v];
+        predecessor[v] = u;
+        tour_edge_len[e] = w;
+        r2[(size_t)u * n + v] = w;
+        r2[(size_t)v * n + u] = w;
+    }
+
+    auto rtdl_result = rtd_lite_run_matrix(r1.data(), r2.data(), n, true);
+    for (rtd_index_t i = 0; i < rtdl_result.right_bars; ++i)
+    {
+        auto tour_e = CanonicalEdge((int)rtdl_result.right_to_left[i].death_i,
+                                    (int)rtdl_result.right_to_left[i].death_j);
+        if (!tour_edge_len.count(tour_e))
+            continue;
+
+        auto mst_e = CanonicalEdge((int)rtdl_result.right_to_left[i].birth_i,
+                                   (int)rtdl_result.right_to_left[i].birth_j);
+        auto mst_len = env->graph->dist[mst_e.first][mst_e.second];
+        auto it = mst_edge_len.find(tour_e);
+        if (it == mst_edge_len.end() || mst_len < it->second)
+            mst_edge_len[tour_e] = mst_len;
+    }
+    rtd_lite_result_free(&rtdl_result);
+
+    for (size_t t = 0; t < env->act_seq.size(); ++t)
+    {
+        int node = env->act_seq[t];
+        if (node < 0 || node >= n)
+            continue;
+        int prev = predecessor[node];
+        if (prev < 0)
+            continue;
+
+        auto e = CanonicalEdge(prev, node);
+        if (!tour_edge_len.count(e) || !mst_edge_len.count(e))
+            continue;
+        auto complexity = tour_edge_len[e] - mst_edge_len[e];
+        if (complexity < 0.0)
+            complexity = 0.0;
+        step_rewards[t] = -cfg::rtdl_reward_scale * complexity / env->norm;
+    }
+    return step_rewards;
+}
+}
 
 std::vector< std::shared_ptr<Graph> > NStepReplayMem::graphs;
 std::vector<int> NStepReplayMem::actions;
@@ -60,6 +146,13 @@ void NStepReplayMem::Add(IEnv* env)
     assert(env->isTerminal());
     int num_steps = env->state_seq.size();
     assert(num_steps);
+
+    if (cfg::use_rtdl_reward)
+    {
+        auto topo_rewards = BuildRtdlRewards(env);
+        assert(topo_rewards.size() == env->reward_seq.size());
+        env->reward_seq = topo_rewards;
+    }
 
     env->sum_rewards[num_steps - 1] = env->reward_seq[num_steps - 1];
     for (int i = num_steps - 1; i >= 0; --i)

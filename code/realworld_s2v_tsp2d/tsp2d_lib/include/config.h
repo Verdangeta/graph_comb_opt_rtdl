@@ -6,6 +6,7 @@
 #include <fstream>
 #include <set>
 #include <map>
+#include <cassert>
 #include "util/gnn_macros.h"
 
 typedef float Dtype;
@@ -33,7 +34,9 @@ struct cfg
     static int edge_dim;
     static int edge_embed_dim;
     static int aux_dim;
+    static int use_rtdl_reward;
     static Dtype decay;
+    static Dtype rtdl_reward_scale;
     static Dtype learning_rate;
     static Dtype l2_penalty;
     static Dtype momentum;    
@@ -76,6 +79,10 @@ struct cfg
     			l2_penalty = atof(argv[i + 1]);      
             if (strcmp(argv[i], "-decay") == 0)
     			decay = atof(argv[i + 1]);      
+            if (strcmp(argv[i], "-use_rtdl_reward") == 0)
+			    use_rtdl_reward = atoi(argv[i + 1]);
+            if (strcmp(argv[i], "-rtdl_reward_scale") == 0)
+			    rtdl_reward_scale = atof(argv[i + 1]);
             if (strcmp(argv[i], "-w_scale") == 0)
                 w_scale = atof(argv[i + 1]);
     		if (strcmp(argv[i], "-momentum") == 0)
@@ -88,8 +95,11 @@ struct cfg
 
         if (n_step <= 0)
             n_step = max_n;
+        assert(use_rtdl_reward == 0 || use_rtdl_reward == 1);
         if (edge_embed_dim < 0)
             edge_embed_dim = embed_dim;
+        std::cerr << "use_rtdl_reward = " << use_rtdl_reward << std::endl;
+        std::cerr << "rtdl_reward_scale = " << rtdl_reward_scale << std::endl;
         std::cerr << "decay = " << decay << std::endl;
         std::cerr << "knn = " << knn << std::endl;
         std::cerr << "edge_embed_dim = " << edge_embed_dim << std::endl;
