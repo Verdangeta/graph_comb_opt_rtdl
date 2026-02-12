@@ -9,6 +9,10 @@ From left to right: (1) S2V-DQN (our method), (2) node-degree heuristic, (3) edg
 
 **** Below shows an example of MVC. For all the problems, you can follow the similar pipeline ****
 
+For TSP-specific setup and run instructions (Python 3 scripts + optional RTDL rewards), see:
+
+`code/s2v_tsp2d/RUNNING.md`
+
 Get the source code, and install all the dependencies. 
 
     git clone --recursive https://github.com/Hanjun-Dai/graph_comb_opt

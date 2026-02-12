@@ -1,0 +1,79 @@
+# TSP quickstart (Python 3 + optional RTDL rewards)
+
+This project uses a C++ backend (shared library) and Python scripts as entrypoints.
+For TSP, scripts are Python 3 compatible and support optional RTDL-based rewards.
+
+## 1) Clone + submodules
+
+```bash
+git clone --recursive <repo-url>
+cd graph_comb_opt
+git submodule update --init --recursive
+```
+
+`third_party/RTDL_cpp` must be initialized (it is used by TSP replay code when RTDL reward is enabled).
+
+## 2) Python dependencies
+
+```bash
+python3 -m pip install numpy networkx tqdm
+```
+
+## 3) Build `graphnn`
+
+```bash
+cd graphnn
+cp make_common.example make_common
+# edit make_common for your machine (CUDA/MKL paths, USE_GPU, etc.)
+make -j
+```
+
+## 4) Build TSP shared libraries
+
+Synthetic TSP:
+
+```bash
+cd ../code/s2v_tsp2d/tsp2d_lib
+cp Makefile.example Makefile
+make -j
+```
+
+Real-world TSP:
+
+```bash
+cd ../../realworld_s2v_tsp2d/tsp2d_lib
+cp Makefile.example Makefile
+make -j
+```
+
+## 5) Train / evaluate
+
+Synthetic:
+
+```bash
+cd ../..
+cd s2v_tsp2d
+./run_nstep_dqn.sh
+./run_eval.sh
+```
+
+Real-world (TSPLIB):
+
+```bash
+cd ../realworld_s2v_tsp2d
+./run_tsplib.sh
+./run_eval.sh
+```
+
+## 6) RTDL reward switches
+
+In TSP run scripts, the reward mode is controlled by:
+
+- `use_rtdl_reward=0|1` (default `0`)
+- `rtdl_reward_scale=<float>` (default `1.0`)
+
+When `use_rtdl_reward=1`, replay memory rewrites per-step rewards using RTDL complexity:
+
+`reward = -max(0, len(tour_edge) - len(matched_mst_edge)) * rtdl_reward_scale / norm`
+
+Then standard n-step target computation is applied on top of these rewards.
