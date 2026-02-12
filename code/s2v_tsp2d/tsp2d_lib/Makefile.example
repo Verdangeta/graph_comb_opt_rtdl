@@ -1,19 +1,21 @@
 GNN_HOME=../../../graphnn
+RTDL_HOME=../../../third_party/RTDL_cpp/RTDLite
 
 include $(GNN_HOME)/make_common
 
 lib_dir = $(GNN_HOME)/build/lib
 gnn_lib = $(lib_dir)/libgnn.a
 
-include_dirs = $(CUDA_HOME)/include $(MKL_ROOT)/include $(GNN_HOME)/include ./include
+include_dirs = $(CUDA_HOME)/include $(MKL_ROOT)/include $(GNN_HOME)/include ./include $(RTDL_HOME)
 
 CXXFLAGS += $(addprefix -I,$(include_dirs)) -Wno-unused-local-typedef
 CXXFLAGS += -fPIC -DUSE_GPU
 CXXFLAGS += -DGPU_MODE
 cpp_files = $(shell $(FIND) src/lib -name "*.cpp" -printf "%P\n")
 cxx_obj_files = $(subst .cpp,.o,$(cpp_files))
+rtdl_obj = build/lib/rtdlite.o
 
-objs = $(addprefix build/lib/,$(cxx_obj_files))
+objs = $(addprefix build/lib/,$(cxx_obj_files)) $(rtdl_obj)
 DEPS = $(objs:.o=.d)
 
 target = build/dll/libtsp2d.so
@@ -32,6 +34,10 @@ DEPS += $(target_dep)
 build/lib/%.o: src/lib/%.cpp
 	$(dir_guard)
 	$(CXX) $(CXXFLAGS) -MMD -c -o $@ $(filter %.cpp, $^)
+
+build/lib/rtdlite.o: $(RTDL_HOME)/rtdlite.cpp
+	$(dir_guard)
+	$(CXX) $(CXXFLAGS) -DRTDLITE_LIBRARY -MMD -c -o $@ $<
 
 clean:
 	rm -rf build

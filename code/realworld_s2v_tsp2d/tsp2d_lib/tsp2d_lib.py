@@ -1,6 +1,5 @@
 import ctypes
 import networkx as nx
-import numpy as np
 import os
 import sys
 
@@ -14,7 +13,7 @@ class Tsp2dLib(object):
         self.lib.Test.restype = ctypes.c_double
         self.lib.GetSol.restype = ctypes.c_double
         arr = (ctypes.c_char_p * len(args))()
-        arr[:] = args
+        arr[:] = [arg.encode('utf-8') for arg in args]
         self.lib.Init(len(args), arr)
         self.ngraph_train = 0
         self.ngraph_test = 0
@@ -49,11 +48,11 @@ class Tsp2dLib(object):
         self.lib.InsertGraph(is_test, t, n_nodes, coor_x, coor_y)
     
     def LoadModel(self, path_to_model):
-        p = ctypes.cast(path_to_model, ctypes.c_char_p)
+        p = ctypes.c_char_p(path_to_model.encode('utf-8'))
         self.lib.LoadModel(p)
 
     def SaveModel(self, path_to_model):
-        p = ctypes.cast(path_to_model, ctypes.c_char_p)
+        p = ctypes.c_char_p(path_to_model.encode('utf-8'))
         self.lib.SaveModel(p)
 
     def GetSol(self, gid, maxn):

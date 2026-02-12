@@ -18,6 +18,8 @@ batch_size=128
 
 net_type=QNet
 decay=0.1
+use_rtdl_reward=0
+rtdl_reward_scale=1.0
 
 # set reg_hidden=0 to make a linear regression
 reg_hidden=32
@@ -49,11 +51,13 @@ then
     mkdir -p $save_dir
 fi
 
-python main.py \
+python3 main.py \
     -net_type $net_type \
     -n_step $n_step \
     -data_root ../../data/tsp2d \
     -decay $decay \
+    -use_rtdl_reward $use_rtdl_reward \
+    -rtdl_reward_scale $rtdl_reward_scale \
     -knn $knn \
     -min_n $min_n \
     -max_n $max_n \

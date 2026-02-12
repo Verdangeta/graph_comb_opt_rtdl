@@ -19,6 +19,8 @@ batch_size=128
 
 net_type=QNet
 decay=0.1
+use_rtdl_reward=0
+rtdl_reward_scale=1.0
 
 # set reg_hidden=0 to make a linear regression
 reg_hidden=32
@@ -45,13 +47,15 @@ max_iter=200000
 # folder to save the trained model
 save_dir=$result_root/ntype-$net_type-embed-$embed_dim-nbp-$max_bp_iter-rh-$reg_hidden
 
-python evaluate.py \
+python3 evaluate.py \
     -net_type $net_type \
     -n_step $n_step \
     -dev_id $dev_id \
     -folder tsplib \
     -data_root ../../data \
     -decay $decay \
+    -use_rtdl_reward $use_rtdl_reward \
+    -rtdl_reward_scale $rtdl_reward_scale \
     -knn $knn \
     -sample_name $sample_name \
     -min_n $min_n \
