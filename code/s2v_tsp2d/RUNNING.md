@@ -13,7 +13,14 @@ git submodule update --init --recursive
 
 `third_party/RTDL_cpp` must be initialized (it is used by TSP replay code when RTDL reward is enabled).
 
-## 2) Python dependencies
+## 2) Create conda environment (recommended)
+
+```bash
+conda env create -f ../../environment.yaml
+conda activate gco-tsp
+```
+
+If you prefer manual setup, install at least:
 
 ```bash
 python3 -m pip install numpy networkx tqdm

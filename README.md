@@ -13,6 +13,35 @@ For TSP-specific setup and run instructions (Python 3 scripts + optional RTDL re
 
 `code/s2v_tsp2d/RUNNING.md`
 
+## Quick start (conda, TSP)
+
+```bash
+conda env create -f environment.yaml
+conda activate gco-tsp
+git submodule update --init --recursive
+```
+
+Build `graphnn`:
+
+```bash
+cd graphnn
+cp make_common.example make_common
+# adjust CUDA/MKL paths or USE_GPU in make_common if needed
+make -j
+```
+
+Build and run TSP:
+
+```bash
+cd ../code/s2v_tsp2d/tsp2d_lib
+cp Makefile.example Makefile
+make -j
+
+cd ..
+./run_nstep_dqn.sh
+./run_eval.sh
+```
+
 Get the source code, and install all the dependencies. 
 
     git clone --recursive https://github.com/Hanjun-Dai/graph_comb_opt
