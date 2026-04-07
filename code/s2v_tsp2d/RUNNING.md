@@ -84,3 +84,21 @@ When `use_rtdl_reward=1`, replay memory rewrites per-step rewards using RTDL com
 `reward = -max(0, len(tour_edge) - len(matched_mst_edge)) * rtdl_reward_scale / norm`
 
 Then standard n-step target computation is applied on top of these rewards.
+
+## 7) Repro commands: baseline vs RTDL on same synthetic data
+
+Use identical settings and data; change only use_rtdl_reward.
+
+Baseline train:
+python3 main.py -data_root ../../data/tsp2d -g_type clustered -min_n 15 -max_n 20 -use_rtdl_reward 0 -rtdl_reward_scale 1.0 -save_dir results/baseline-clustered-15-20 [other params as in run_nstep_dqn.sh]
+
+Baseline eval:
+python3 evaluate.py -data_root ../../data/tsp2d -g_type clustered -test_min_n 15 -test_max_n 20 -min_n 15 -max_n 20 -use_rtdl_reward 0 -rtdl_reward_scale 1.0 -save_dir results/baseline-clustered-15-20 [other params as in run_eval.sh]
+
+RTDL train:
+python3 main.py -data_root ../../data/tsp2d -g_type clustered -min_n 15 -max_n 20 -use_rtdl_reward 1 -rtdl_reward_scale 1.0 -save_dir results/rtdl-clustered-15-20 [same params]
+
+RTDL eval:
+python3 evaluate.py -data_root ../../data/tsp2d -g_type clustered -test_min_n 15 -test_max_n 20 -min_n 15 -max_n 20 -use_rtdl_reward 1 -rtdl_reward_scale 1.0 -save_dir results/rtdl-clustered-15-20 [same params]
+
+Evaluate fallback: if log-*.txt is absent, evaluate.py automatically loads the latest *_iter_*.model in save_dir.
