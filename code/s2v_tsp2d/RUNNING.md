@@ -85,20 +85,26 @@ When `use_rtdl_reward=1`, replay memory rewrites per-step rewards using RTDL com
 
 Then standard n-step target computation is applied on top of these rewards.
 
-## 7) Repro commands: baseline vs RTDL on same synthetic data
+<<<<<<< HEAD
+## 7) One-command baseline vs RTDL comparison
 
-Use identical settings and data; change only use_rtdl_reward.
+Use the helper script to run two experiments (baseline and RTDL) with identical
+hyperparameters, print progress, and save a final comparison summary.
 
-Baseline train:
-python3 main.py -data_root ../../data/tsp2d -g_type clustered -min_n 15 -max_n 20 -use_rtdl_reward 0 -rtdl_reward_scale 1.0 -save_dir results/baseline-clustered-15-20 [other params as in run_nstep_dqn.sh]
+```bash
+cd code/s2v_tsp2d
+chmod +x run_compare_baseline_rtdl.sh
+./run_compare_baseline_rtdl.sh
+```
 
-Baseline eval:
-python3 evaluate.py -data_root ../../data/tsp2d -g_type clustered -test_min_n 15 -test_max_n 20 -min_n 15 -max_n 20 -use_rtdl_reward 0 -rtdl_reward_scale 1.0 -save_dir results/baseline-clustered-15-20 [other params as in run_eval.sh]
+By default, outputs go to:
 
-RTDL train:
-python3 main.py -data_root ../../data/tsp2d -g_type clustered -min_n 15 -max_n 20 -use_rtdl_reward 1 -rtdl_reward_scale 1.0 -save_dir results/rtdl-clustered-15-20 [same params]
+- `results/compare-<g_type>-<min_n>-<max_n>/baseline`
+- `results/compare-<g_type>-<min_n>-<max_n>/rtdl`
+- summary: `results/compare-<g_type>-<min_n>-<max_n>/comparison.txt`
 
-RTDL eval:
-python3 evaluate.py -data_root ../../data/tsp2d -g_type clustered -test_min_n 15 -test_max_n 20 -min_n 15 -max_n 20 -use_rtdl_reward 1 -rtdl_reward_scale 1.0 -save_dir results/rtdl-clustered-15-20 [same params]
+You can override settings via environment variables, e.g.:
 
-Evaluate fallback: if log-*.txt is absent, evaluate.py automatically loads the latest *_iter_*.model in save_dir.
+```bash
+MAX_ITER=1000 DEV_ID=0 MIN_N=15 MAX_N=20 ./run_compare_baseline_rtdl.sh
+```
