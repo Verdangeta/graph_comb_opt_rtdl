@@ -34,6 +34,127 @@ RESULT_PREFIX="${RESULT_PREFIX:-results/compare-${G_TYPE}-${MIN_N}-${MAX_N}}"
 BASELINE_SAVE_DIR="${BASELINE_SAVE_DIR:-${RESULT_PREFIX}/baseline}"
 RTDL_SAVE_DIR="${RTDL_SAVE_DIR:-${RESULT_PREFIX}/rtdl}"
 
+TOTAL_STAGES=4
+COMPLETED_STAGES=0
+TOTAL_STAGE_SECONDS=0
+CURRENT_STAGE_START=0
+
+fmt_hms() {
+  local sec="$1"
+  local h=$((sec / 3600))
+  local m=$(((sec % 3600) / 60))
+  local s=$((sec % 60))
+  printf "%02d:%02d:%02d" "$h" "$m" "$s"
+}
+
+stage_start() {
+  local title="$1"
+  CURRENT_STAGE_START="$(date +%s)"
+  echo
+  echo ">>> [stage $((COMPLETED_STAGES + 1))/${TOTAL_STAGES}] $title"
+}
+
+stage_end() {
+  local end_ts elapsed avg eta remaining
+  end_ts="$(date +%s)"
+  elapsed=$((end_ts - CURRENT_STAGE_START))
+  COMPLETED_STAGES=$((COMPLETED_STAGES + 1))
+  TOTAL_STAGE_SECONDS=$((TOTAL_STAGE_SECONDS + elapsed))
+  remaining=$((TOTAL_STAGES - COMPLETED_STAGES))
+  if (( COMPLETED_STAGES > 0 )); then
+    avg=$((TOTAL_STAGE_SECONDS / COMPLETED_STAGES))
+  else
+    avg=0
+  fi
+  eta=$((avg * remaining))
+  echo "<<< stage done in $(fmt_hms "$elapsed"), elapsed total=$(fmt_hms "$TOTAL_STAGE_SECONDS"), est. remaining=$(fmt_hms "$eta")"
+}
+
+run_train_with_progress() {
+  local max_iter="$1"
+  local train_log_full="$2"
+  local train_log_txt="$3"
+  shift 3
+  python3 - "$max_iter" "$train_log_full" "$train_log_txt" "$@" <<'PY'
+import math
+import re
+import subprocess
+import sys
+import time
+
+max_iter = int(sys.argv[1])
+log_full = sys.argv[2]
+log_txt = sys.argv[3]
+cmd = sys.argv[4:]
+
+iter_re = re.compile(r"\biter\s+(\d+)\b")
+
+def fmt_hms(seconds: float) -> str:
+    if not math.isfinite(seconds) or seconds < 0:
+        return "--:--:--"
+    s = int(seconds)
+    h = s // 3600
+    m = (s % 3600) // 60
+    ss = s % 60
+    return f"{h:02d}:{m:02d}:{ss:02d}"
+
+def render_bar(progress: float, width: int = 28) -> str:
+    p = max(0.0, min(1.0, progress))
+    filled = int(round(p * width))
+    return "#" * filled + "-" * (width - filled)
+
+start = time.time()
+last_iter = 0
+last_line_time = start
+
+with open(log_full, "w", encoding="utf-8") as full_f, open(log_txt, "w", encoding="utf-8") as txt_f:
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        full_f.write(line)
+        txt_f.write(line)
+        full_f.flush()
+        txt_f.flush()
+
+        m = iter_re.search(line)
+        if m:
+            last_iter = int(m.group(1))
+            now = time.time()
+            elapsed = now - start
+            progress = (last_iter / max_iter) if max_iter > 0 else 0.0
+            eta = (elapsed / progress - elapsed) if progress > 0 else float("inf")
+            bar = render_bar(progress)
+            pct = progress * 100.0
+            sys.stdout.write(
+                f"[train progress] |{bar}| {pct:6.2f}% "
+                f"iter={last_iter}/{max_iter} elapsed={fmt_hms(elapsed)} eta={fmt_hms(eta)}\n"
+            )
+            sys.stdout.flush()
+            last_line_time = now
+
+    rc = proc.wait()
+    if rc != 0:
+        sys.exit(rc)
+
+total_elapsed = time.time() - start
+final_progress = (last_iter / max_iter) if max_iter > 0 else 0.0
+sys.stdout.write(
+    f"[train progress] done: iter={last_iter}/{max_iter}, "
+    f"final={final_progress * 100.0:6.2f}%, elapsed={fmt_hms(total_elapsed)}\n"
+)
+sys.stdout.flush()
+PY
+}
+
 prepare_data_links() {
   mkdir -p "$ROOT/data/tsp2d"
   if [[ -d "$ROOT/data/train_tsp2d" ]]; then
@@ -83,7 +204,9 @@ run_one() {
   echo "============================================================"
 
   # Keep compatibility with evaluate.py (it searches log-min-max.txt)
-  python3 main.py \
+  stage_start "${label} train"
+  train_cmd=(
+    python3 main.py
     -net_type "$NET_TYPE" \
     -dev_id "$DEV_ID" \
     -n_step "$N_STEP" \
@@ -106,11 +229,14 @@ run_one() {
     -reg_hidden "$REG_HIDDEN" \
     -momentum "$MOMENTUM" \
     -l2 "$L2" \
-    -w_scale "$W_SCALE" \
-    2>&1 | tee "$train_log_full" | tee "$train_log_txt"
+    -w_scale "$W_SCALE"
+  )
+  run_train_with_progress "$MAX_ITER" "$train_log_full" "$train_log_txt" "${train_cmd[@]}"
+  stage_end
 
   echo "[$label] evaluating"
-  python3 evaluate.py \
+  stage_start "${label} eval"
+  PYTHONUNBUFFERED=1 python3 evaluate.py \
     -net_type "$NET_TYPE" \
     -dev_id "$DEV_ID" \
     -n_step "$N_STEP" \
@@ -137,6 +263,7 @@ run_one() {
     -l2 "$L2" \
     -w_scale "$W_SCALE" \
     2>&1 | tee "$eval_log"
+  stage_end
 
   local avg
   avg="$(extract_avg_tour_len "$eval_log")"
@@ -146,14 +273,16 @@ run_one() {
   fi
 
   echo "[$label] average tour length = $avg"
-  echo "$avg"
+  echo "$avg" > "$save_dir/avg_tour_length.txt"
 }
 
 prepare_data_links
 mkdir -p "$RESULT_PREFIX"
 
-baseline_avg="$(run_one "BASELINE" 0 "$BASELINE_SAVE_DIR" | tail -n 1)"
-rtdl_avg="$(run_one "RTDL" 1 "$RTDL_SAVE_DIR" | tail -n 1)"
+run_one "BASELINE" 0 "$BASELINE_SAVE_DIR"
+baseline_avg="$(cat "$BASELINE_SAVE_DIR/avg_tour_length.txt")"
+run_one "RTDL" 1 "$RTDL_SAVE_DIR"
+rtdl_avg="$(cat "$RTDL_SAVE_DIR/avg_tour_length.txt")"
 
 python3 - "$baseline_avg" "$rtdl_avg" "$RESULT_PREFIX" "$BASELINE_SAVE_DIR" "$RTDL_SAVE_DIR" <<'PY'
 import pathlib
