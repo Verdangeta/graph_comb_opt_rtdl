@@ -110,6 +110,59 @@ run_train() {
     -l2 "$L2" \
     -w_scale "$W_SCALE" \
     2>&1 | tee "$train_log"
+
+  # Persist the train-range checkpoint chosen by validation, so all test ranges
+  # are evaluated on the same trained model.
+  python3 - "$save_dir" "$TRAIN_MIN_N" "$TRAIN_MAX_N" <<'PY'
+import glob
+import os
+import pathlib
+import re
+import sys
+
+save_dir = pathlib.Path(sys.argv[1])
+min_n = int(sys.argv[2])
+max_n = int(sys.argv[3])
+log_file = save_dir / f"log-{min_n}-{max_n}.txt"
+best_it = -1
+best_r = float("inf")
+if log_file.is_file():
+    for line in log_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if "average" not in line:
+            continue
+        parts = line.split()
+        try:
+            it = int(parts[1].strip())
+            r = float(parts[-1].strip())
+        except Exception:
+            continue
+        if r < best_r:
+            best_r = r
+            best_it = it
+
+model_path = None
+if best_it >= 0:
+    p = save_dir / f"nrange_{min_n}_{max_n}_iter_{best_it}.model"
+    if p.is_file():
+        model_path = p
+
+if model_path is None:
+    patt = str(save_dir / f"nrange_{min_n}_{max_n}_iter_*.model")
+    cands = []
+    for p in glob.glob(patt):
+        m = re.search(r"_iter_(\d+)\.model$", os.path.basename(p))
+        if m:
+            cands.append((int(m.group(1)), p))
+    if cands:
+        cands.sort(key=lambda x: x[0])
+        model_path = pathlib.Path(cands[-1][1])
+
+if model_path is None:
+    raise SystemExit(f"No model found in {save_dir} for train range {min_n}-{max_n}")
+
+(save_dir / "selected_model.txt").write_text(str(model_path) + "\n", encoding="utf-8")
+print(f"[train] selected model: {model_path}")
+PY
 }
 
 run_eval_range() {
@@ -167,6 +220,7 @@ run_train "RTDL" 1 "$RTDL_SAVE_DIR"
 
 python3 - "$RESULT_PREFIX" "$BASELINE_SAVE_DIR" "$RTDL_SAVE_DIR" "$REF_FILE" "$TEST_RANGES" <<'PY'
 import csv
+import glob
 import pathlib
 import re
 import subprocess
@@ -181,6 +235,41 @@ test_ranges = sys.argv[5].split()
 run_script = pathlib.Path("run_table2_tsp_clustered_baseline_vs_rtdl.sh")
 if not run_script.exists():
     raise SystemExit("run script not found in cwd")
+
+train_min = int(pathlib.os.environ.get("TRAIN_MIN_N", "50"))
+train_max = int(pathlib.os.environ.get("TRAIN_MAX_N", "100"))
+num_env = int(pathlib.os.environ.get("NUM_ENV", "1"))
+mem_size = int(pathlib.os.environ.get("MEM_SIZE", "50000"))
+g_type = pathlib.os.environ.get("G_TYPE", "clustered")
+lr = pathlib.os.environ.get("LEARNING_RATE", "0.0001")
+max_bp = int(pathlib.os.environ.get("MAX_BP_ITER", "4"))
+embed = int(pathlib.os.environ.get("EMBED_DIM", "64"))
+batch = int(pathlib.os.environ.get("BATCH_SIZE", "128"))
+reg_hidden = int(pathlib.os.environ.get("REG_HIDDEN", "32"))
+momentum = pathlib.os.environ.get("MOMENTUM", "0.9")
+l2 = pathlib.os.environ.get("L2", "0.0")
+w_scale = pathlib.os.environ.get("W_SCALE", "0.01")
+
+def resolve_selected_model(save_dir: pathlib.Path) -> pathlib.Path:
+    sel = save_dir / "selected_model.txt"
+    if sel.is_file():
+        p = pathlib.Path(sel.read_text(encoding="utf-8").strip())
+        if p.is_file():
+            return p
+
+    patt = str(save_dir / f"nrange_{train_min}_{train_max}_iter_*.model")
+    cands = []
+    for p in glob.glob(patt):
+        m = re.search(r"_iter_(\d+)\.model$", pathlib.Path(p).name)
+        if m:
+            cands.append((int(m.group(1)), pathlib.Path(p)))
+    if not cands:
+        raise SystemExit(f"No train checkpoint found in {save_dir}")
+    cands.sort(key=lambda x: x[0])
+    return cands[-1][1]
+
+baseline_model = resolve_selected_model(baseline_dir)
+rtdl_model = resolve_selected_model(rtdl_dir)
 
 def read_ref(path):
     ref = {}
@@ -208,7 +297,7 @@ for rr in test_ranges:
         raise SystemExit(f"Bad range format: {rr}")
     tmin, tmax = int(m.group(1)), int(m.group(2))
 
-    def eval_one(label, use_rtdl, save_dir):
+    def eval_one(label, use_rtdl, save_dir, model_path):
         cmd = [
             "python3", "evaluate.py",
             "-net_type", "QNet",
@@ -221,21 +310,22 @@ for rr in test_ranges:
             "-knn", "10",
             "-test_min_n", str(tmin),
             "-test_max_n", str(tmax),
-            "-min_n", str(int(pathlib.os.environ.get("TRAIN_MIN_N", "50"))),
-            "-max_n", str(int(pathlib.os.environ.get("TRAIN_MAX_N", "100"))),
-            "-num_env", str(int(pathlib.os.environ.get("NUM_ENV", "1"))),
+            "-min_n", str(train_min),
+            "-max_n", str(tmax),
+            "-num_env", str(num_env),
             "-max_iter", "1",
-            "-mem_size", str(int(pathlib.os.environ.get("MEM_SIZE", "50000"))),
-            "-g_type", pathlib.os.environ.get("G_TYPE", "clustered"),
-            "-learning_rate", pathlib.os.environ.get("LEARNING_RATE", "0.0001"),
-            "-max_bp_iter", str(int(pathlib.os.environ.get("MAX_BP_ITER", "4"))),
+            "-mem_size", str(mem_size),
+            "-g_type", g_type,
+            "-learning_rate", lr,
+            "-max_bp_iter", str(max_bp),
             "-save_dir", str(save_dir),
-            "-embed_dim", str(int(pathlib.os.environ.get("EMBED_DIM", "64"))),
-            "-batch_size", str(int(pathlib.os.environ.get("BATCH_SIZE", "128"))),
-            "-reg_hidden", str(int(pathlib.os.environ.get("REG_HIDDEN", "32"))),
-            "-momentum", pathlib.os.environ.get("MOMENTUM", "0.9"),
-            "-l2", pathlib.os.environ.get("L2", "0.0"),
-            "-w_scale", pathlib.os.environ.get("W_SCALE", "0.01"),
+            "-embed_dim", str(embed),
+            "-batch_size", str(batch),
+            "-reg_hidden", str(reg_hidden),
+            "-momentum", momentum,
+            "-l2", l2,
+            "-w_scale", w_scale,
+            "-force_model", str(model_path),
         ]
         print(f"[{label}] EVAL {tmin}-{tmax}")
         proc = subprocess.run(cmd, text=True, capture_output=True, check=True)
@@ -247,8 +337,8 @@ for rr in test_ranges:
             raise SystemExit(f"cannot parse average tour length for {label} {tmin}-{tmax}")
         return float(m2[-1])
 
-    b = eval_one("BASELINE", 0, baseline_dir)
-    r = eval_one("RTDL", 1, rtdl_dir)
+    b = eval_one("BASELINE", 0, baseline_dir, baseline_model)
+    r = eval_one("RTDL", 1, rtdl_dir, rtdl_model)
 
     ratio_b = ""
     ratio_r = ""

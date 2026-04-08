@@ -13,6 +13,13 @@ from tsp2d_lib import Tsp2dLib
 
 
 def find_model_file(opt):
+    explicit = opt.get('model_file')
+    if explicit:
+        if os.path.isfile(explicit):
+            print('using explicit model_file=', explicit)
+            return explicit
+        raise FileNotFoundError('model_file does not exist: %s' % explicit)
+
     max_n = int(opt['max_n'])
     min_n = int(opt['min_n'])
     log_file = '%s/log-%d-%d.txt' % (opt['save_dir'], min_n, max_n)
@@ -43,6 +50,17 @@ def find_model_file(opt):
     if candidates:
         best_it, model_file = max(candidates, key=lambda x: x[0])
         print('log file not found, fallback to latest model iter=', best_it)
+        return model_file
+
+    any_pattern = '%s/nrange_*_*_iter_*.model' % (opt['save_dir'])
+    any_candidates = []
+    for path in glob.glob(any_pattern):
+        m = re.search(r'_iter_(\d+)\.model$', os.path.basename(path))
+        if m:
+            any_candidates.append((int(m.group(1)), path))
+    if any_candidates:
+        best_it, model_file = max(any_candidates, key=lambda x: x[0])
+        print('specific model pattern not found, fallback to latest model iter=', best_it)
         return model_file
 
     raise FileNotFoundError(
