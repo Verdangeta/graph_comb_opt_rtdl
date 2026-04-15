@@ -1,36 +1,78 @@
 import numpy as np
 import networkx as nx
 import ctypes
+import glob
 import os
+import re
 import sys
 import time
 from tqdm import tqdm
 
-sys.path.append( '%s/tsp2d_lib' % os.path.dirname(os.path.realpath(__file__)) )
+sys.path.append('%s/tsp2d_lib' % os.path.dirname(os.path.realpath(__file__)))
 from tsp2d_lib import Tsp2dLib
-    
+
+
 def find_model_file(opt):
+    explicit = opt.get('model_file')
+    if explicit:
+        if os.path.isfile(explicit):
+            print('using explicit model_file=', explicit)
+            return explicit
+        raise FileNotFoundError('model_file does not exist: %s' % explicit)
+
     max_n = int(opt['max_n'])
     min_n = int(opt['min_n'])
     log_file = '%s/log-%d-%d.txt' % (opt['save_dir'], min_n, max_n)
 
     best_r = 10000000
     best_it = -1
-    with open(log_file, 'r') as f:
-        for line in f:
-            if 'average' in line:
-                line = line.split(' ')
-                it = int(line[1].strip())
-                r = float(line[-1].strip())
-                if r < best_r:
-                    best_r = r
-                    best_it = it
-    assert best_it >= 0
-    print('using iter=', best_it, 'with r=', best_r)
-    return '%s/nrange_%d_%d_iter_%d.model' % (opt['save_dir'], min_n, max_n, best_it)
+    if os.path.isfile(log_file):
+        with open(log_file, 'r') as f:
+            for line in f:
+                if 'average' in line:
+                    line = line.split(' ')
+                    it = int(line[1].strip())
+                    r = float(line[-1].strip())
+                    if r < best_r:
+                        best_r = r
+                        best_it = it
+        if best_it >= 0:
+            print('using iter=', best_it, 'with r=', best_r)
+            return '%s/nrange_%d_%d_iter_%d.model' % (opt['save_dir'], min_n, max_n, best_it)
+
+    pattern = '%s/nrange_%d_%d_iter_*.model' % (opt['save_dir'], min_n, max_n)
+    candidates = []
+    for path in glob.glob(pattern):
+        m = re.search(r'_iter_(\d+)\.model$', os.path.basename(path))
+        if m:
+            candidates.append((int(m.group(1)), path))
+
+    if candidates:
+        best_it, model_file = max(candidates, key=lambda x: x[0])
+        print('log file not found, fallback to latest model iter=', best_it)
+        return model_file
+
+    any_pattern = '%s/nrange_*_*_iter_*.model' % (opt['save_dir'])
+    any_candidates = []
+    for path in glob.glob(any_pattern):
+        m = re.search(r'_iter_(\d+)\.model$', os.path.basename(path))
+        if m:
+            any_candidates.append((int(m.group(1)), path))
+    if any_candidates:
+        best_it, model_file = max(any_candidates, key=lambda x: x[0])
+        print('specific model pattern not found, fallback to latest model iter=', best_it)
+        return model_file
+
+    raise FileNotFoundError(
+        'No model found. Expected log file %s or model pattern %s'
+        % (log_file, pattern)
+    )
+
 
 def TestSet():
-    folder = '%s/test_tsp2d/tsp_min-n=%s_max-n=%s_num-graph=1000_type=%s' % (opt['data_root'], opt['test_min_n'], opt['test_max_n'], opt['g_type'])
+    folder = '%s/test_tsp2d/tsp_min-n=%s_max-n=%s_num-graph=1000_type=%s' % (
+        opt['data_root'], opt['test_min_n'], opt['test_max_n'], opt['g_type']
+    )
 
     with open('%s/paths.txt' % folder, 'r') as f:
         for line in f:
@@ -52,17 +94,17 @@ def TestSet():
             g = nx.Graph()
             g.add_nodes_from(range(n_nodes))
             nx.set_node_attributes(g, coors, 'pos')
-            yield g            
+            yield g
+
 
 if __name__ == '__main__':
     api = Tsp2dLib(sys.argv)
-    
+
     opt = {}
     for i in range(1, len(sys.argv), 2):
         opt[sys.argv[i][1:]] = sys.argv[i + 1]
 
     model_file = find_model_file(opt)
-    assert model_file is not None
     print('loading', model_file)
     sys.stdout.flush()
     api.LoadModel(model_file)

@@ -61,9 +61,11 @@ if __name__ == '__main__':
         api.lib.PlayGame(100, ctypes.c_double(1.0))
     api.TakeSnapshot()
 
-    eps_start = 1.0
-    eps_end = 1.0
-    eps_step = 10000.0
+    eps_start = float(opt.get('eps_start', 1.0))
+    eps_end = float(opt.get('eps_end', 0.05))
+    eps_step = float(opt.get('eps_step', 10000.0))
+    if eps_step <= 0:
+        raise ValueError('eps_step must be positive')
     api.lib.SetSign(1)
 
     lr = float(opt['learning_rate'])

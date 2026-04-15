@@ -13,7 +13,14 @@ git submodule update --init --recursive
 
 `third_party/RTDL_cpp` must be initialized (it is used by TSP replay code when RTDL reward is enabled).
 
-## 2) Python dependencies
+## 2) Create conda environment (recommended)
+
+```bash
+conda env create -f ../../environment.yaml
+conda activate gco-tsp
+```
+
+If you prefer manual setup, install at least:
 
 ```bash
 python3 -m pip install numpy networkx tqdm
@@ -77,3 +84,54 @@ When `use_rtdl_reward=1`, replay memory rewrites per-step rewards using RTDL com
 `reward = -max(0, len(tour_edge) - len(matched_mst_edge)) * rtdl_reward_scale / norm`
 
 Then standard n-step target computation is applied on top of these rewards.
+
+<<<<<<< HEAD
+## 7) One-command baseline vs RTDL comparison
+
+Use the helper script to run two experiments (baseline and RTDL) with identical
+hyperparameters, print progress, and save a final comparison summary.
+
+```bash
+cd code/s2v_tsp2d
+chmod +x run_compare_baseline_rtdl.sh
+./run_compare_baseline_rtdl.sh
+```
+
+By default, outputs go to:
+
+- `results/compare-<g_type>-<min_n>-<max_n>/baseline`
+- `results/compare-<g_type>-<min_n>-<max_n>/rtdl`
+- summary: `results/compare-<g_type>-<min_n>-<max_n>/comparison.txt`
+
+You can override settings via environment variables, e.g.:
+
+```bash
+MAX_ITER=1000 DEV_ID=0 MIN_N=15 MAX_N=20 ./run_compare_baseline_rtdl.sh
+```
+
+## 8) Reproduce Table-2-style TSP(clustered) comparison
+
+This runs one training range (default `50-100`) and evaluates both baseline and
+RTDL models on multiple test-size ranges (default:
+`50-100,100-200,200-300,300-400,400-500,500-600,1000-1200`).
+
+```bash
+cd code/s2v_tsp2d
+chmod +x run_table2_tsp_clustered_baseline_vs_rtdl.sh
+./run_table2_tsp_clustered_baseline_vs_rtdl.sh
+```
+
+Main outputs:
+
+- baseline models/results: `results/table2-tsp-clustered/train-50-100/baseline`
+- rtdl models/results: `results/table2-tsp-clustered/train-50-100/rtdl`
+- final report table:
+  `results/table2-tsp-clustered/train-50-100/table2_tsp_clustered_compare.txt`
+
+Optional env overrides:
+
+```bash
+TRAIN_MIN_N=50 TRAIN_MAX_N=100 MAX_ITER=200000 DEV_ID=0 \
+TEST_RANGES="50-100,100-200,200-300,300-400,400-500,500-600,1000-1200" \
+./run_table2_tsp_clustered_baseline_vs_rtdl.sh
+```

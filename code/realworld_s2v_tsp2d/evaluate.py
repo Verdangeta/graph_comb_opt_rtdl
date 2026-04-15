@@ -1,4 +1,6 @@
+import glob
 import os
+import re
 import sys
 import time
 
@@ -16,18 +18,36 @@ def find_model_file(opt):
 
     best_r = 10000000
     best_it = -1
-    with open(log_file, 'r') as f:
-        for line in f:
-            if 'average' in line:
-                line = line.split(' ')
-                it = int(line[1].strip())
-                r = float(line[-1].strip())
-                if r < best_r:
-                    best_r = r
-                    best_it = it
-    assert best_it >= 0
-    print('using iter=', best_it, 'with r=', best_r)
-    return '%s/%s_iter_%d.model' % (opt['save_dir'], opt['sample_name'], best_it)
+    if os.path.isfile(log_file):
+        with open(log_file, 'r') as f:
+            for line in f:
+                if 'average' in line:
+                    line = line.split(' ')
+                    it = int(line[1].strip())
+                    r = float(line[-1].strip())
+                    if r < best_r:
+                        best_r = r
+                        best_it = it
+        if best_it >= 0:
+            print('using iter=', best_it, 'with r=', best_r)
+            return '%s/%s_iter_%d.model' % (opt['save_dir'], opt['sample_name'], best_it)
+
+    pattern = '%s/%s_iter_*.model' % (opt['save_dir'], opt['sample_name'])
+    candidates = []
+    for path in glob.glob(pattern):
+        m = re.search(r'_iter_(\d+)\.model$', os.path.basename(path))
+        if m:
+            candidates.append((int(m.group(1)), path))
+
+    if candidates:
+        best_it, model_file = max(candidates, key=lambda x: x[0])
+        print('log file not found, fallback to latest model iter=', best_it)
+        return model_file
+
+    raise FileNotFoundError(
+        'No model found. Expected log file %s or model pattern %s'
+        % (log_file, pattern)
+    )
 
 
 def GetGraph(fname, need_norm):
@@ -100,7 +120,6 @@ if __name__ == '__main__':
     fname = '%s/%s/%s' % (opt['data_root'], opt['folder'], opt['sample_name'])
 
     model_file = find_model_file(opt)
-    assert model_file is not None
     print('loading', model_file)
     sys.stdout.flush()
     api.LoadModel(model_file)
